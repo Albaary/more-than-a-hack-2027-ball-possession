@@ -1,83 +1,19 @@
 #!/usr/bin/env python3
 """
-predict_possession_v7.py — Precision-Tuned Two-Pass Possession Pipeline (v7, < 15 MB RAM)
-More Than A Hack 2027 (Phase 1: Ball Possession)
+predict_possession.py — Two-pass, rule-based ball possession pipeline.
+More Than A Hack 2027 (Phase 1: Ball Possession). Team: Alamak Menang Wak.
 
-Peningkatan Versi 7 (berdasarkan sweep v6):
-1. WINDOW TEAM 60 -> 50. Hasil sweep: v6 (win60) macro_f1 0.7755, spell_f1_mean 0.4774,
-   poss 14; v6 win50 macro_f1 0.7702, spell_f1_mean 0.5371, spell_f1_headline 0.516 -> 0.571,
-   poss 18 (GT 17, spell_count_error -3 -> +1). Dua spell lagi cocok di IoU 0.5 (TP 8 -> 10).
-   Harganya: macro_f1 -0.005, f1_H -0.007, f1_A -0.009, spurious 11 -> 15, trans_f1 -0.02/-0.03.
-   win50 dijadikan default karena ia menempati rank 1 di scoreboard sweep walau macro_f1-nya
-   lebih rendah, yang menandakan ranking memberi bobot ke spell F1. Aturan penilaian yang
-   pasti belum kulihat; kalau yang dinilai murni macro_f1, pakai --window-team 60 (= v6).
-2. TEMUAN: --dead-ball-speed 2.6 / --dead-player-speed 2.35 menghasilkan skor IDENTIK
-   dengan v6 di semua metrik. Ambang itu praktis tidak aktif di data ini, jadi recall_D
-   (0.577) tidak akan naik lewat parameter tersebut. Bias recall_D ada di jalur lain
-   (jendela Set Piece, bola hilang, bola keluar garis).
-3. sweep_v7.py: varian di sekitar window 50 (window 52/55 dan --min-spell 60) untuk
-   mencari titik tengah antara spell F1 dan macro_f1.
-4. Semua default lain sama dengan v6.
+Streams the tactical tracking file (< 15 MB RAM) and labels every frame H / A / D / X:
+  1. Ball trajectory, ball speed, missing-ball gaps (interpolated only up to 35 frames).
+  2. Nearest-player distances per team and mean player speed.
+  3. Smart Tagging context: team prior and Set Piece dead/alive windows.
+  4. Separate team (H vs A) and dead-ball (D) tracks, smoothed independently.
+  5. Segment clean-up, boundary snapping and latency correction.
 
-Peningkatan Versi 6 (berdasarkan scoreboard v5: macro_f1 0.7728, spellF1 0.4774):
-1. RESTART DELAY 8 -> 12. Di v5, delay 8 frame menggeser median_latency dari -11 ke -4
-   (+7, hampir 1:1), recall_D naik 0.546 -> 0.568 dan precision_D tetap 0.76. Sisa bias
-   median -4 frame sehingga default dinaikkan ke 12 (ekstrapolasi dari SATU titik data,
-   n_matched hanya 7, jadi ini hipotesis). Jika mean_latency berbalik positif besar atau
-   precision_D turun, kembali ke 8 (--restart-delay 8 = perilaku v5 persis).
-2. sweep_v6.py (file terpisah) menjalankan beberapa varian dengan nama tim berbeda sehingga
-   semuanya tampil berdampingan di satu scoreboard (v5 kemarin menimpa baris v4 karena
-   nama tim sama).
-3. Semua default lain sama dengan v5.
+See README.md for parameters and TECHNICAL.md for the possession rules.
 
-Peningkatan Versi 5 (berdasarkan scoreboard v4: macro_f1 0.7661, spellF1 0.4645):
-1. RESTART DELAY (batas D -> H/A). Pada v4, delay H<->A hanya menggeser mean_latency dari
-   -10.0 ke -8.67 (+1.33, bukan +8) dan median tetap -11. Itu konsisten dengan hanya 1 dari
-   6 transisi cocok yang berupa batas H<->A; sisanya kemungkinan berbatasan dengan D, yaitu
-   frame saat bola dilepas kembali (r_frame dari Smart Tagging, kecepatan bola >= 2.8 m/s
-   yang dihaluskan +/-3 frame sehingga cenderung terdeteksi lebih awal).
-   Kini setiap batas D -> H/A digeser maju --restart-delay frame (default 8). Efek samping
-   yang diharapkan: D sedikit lebih panjang, jadi recall_D (0.546 di v4) ikut naik.
-   Ini HIPOTESIS yang belum terbukti. Jika mean_latency berbalik positif besar atau
-   precision_D turun tajam, kecilkan --restart-delay (0 = identik dengan v4).
-2. Semua default lain sama dengan v4 (--transition-delay 8, ambang dead ball v3).
-
-Peningkatan Versi 4 (berdasarkan scoreboardv3: macro_f1 0.7647, spellF1 0.4516):
-1. KOREKSI BIAS TRANSISI: v3 punya mean_latency -10 dan median -11 frame (semua transisi
-   yang cocok terprediksi ~0.4 detik TERLALU AWAL; jarak pemain-ke-bola bersilangan sebelum
-   pemain baru benar-benar menyentuh bola). Setelah Boundary Snapping, setiap batas H <-> A
-   kini digeser maju sebesar --transition-delay frame (default 8, sengaja sedikit di bawah
-   bias terukur sebagai pengaman). Menyasar mean/p90 latency, trans_f1_12 dan trans_f1_25.
-   CATATAN: asumsi tanda latency = (prediksi - GT). Jika setelah v4 mean_latency berbalik
-   positif besar, kecilkan --transition-delay (atau 0 untuk mematikan).
-2. AMBANG DEAD BALL KINI BISA DITUNING lewat CLI (--dead-ball-speed, --dead-player-speed).
-   Default sama persis dengan v3. v3 punya precision_D 0.759 tapi recall_D 0.546, jadi
-   melonggarkan sedikit (mis. 2.6 / 2.35) layak dicoba untuk menaikkan f1_D.
-3. Docstring v3 menyebut "restorasi 17 possessions", padahal hasil skor: poss=14 (GT 17),
-   fragmentation 0.905. Jika spell_count_error masih negatif, coba --window-team 50.
-
-Peningkatan Versi 3 (Menggabungkan Keunggulan Terbaik v1 & v2 + Boundary Snapping):
-1. ZERO-LOSS HYBRID (Menjaga semua rekor v2 sekaligus memulihkan metrik yang sempat turun tipis):
-   - Mengembalikan batas interpolasi posisi bola ke <= 35 frame (1.4 detik, seperti v1) agar
-     saat bola hilang lama di udara (36..120 frame), garis lurus imajiner tidak memotong
-     posisi bek lawan dan menurunkan akurasi tim (memulihkan team_acc_both_alive & f1_H).
-   - Hanya menggunakan fase ofensif Smart Tagging (+6 frame latency alignment) dan awal
-     DEFENSIVE TRANSITION, tanpa membiarkan blok panjang DEFENDING IN ... menimpa penguasaan
-     bola Barcelona setelah bola berhasil direbut kembali.
-2. TRANSITION BOUNDARY SNAPPING (Mempertajam trans_f1_12, trans_f1_25, dan spellF1):
-   - Menghilangkan lag histeresis buatan (-0.40m) yang sempat membuat p90_abs_latency naik
-     di v2, lalu menambahkan tahap Boundary Snapping (+/-10 frame) di setiap pergantian
-     segmen H <-> A agar titik transisi tepat jatuh pada frame saat jarak pemain ke bola
-     benar-benar bersilangan.
-3. PRESISI DEAD BALL (D) & RESTORASI 17 POSSESSIONS (fragmentation -> 1.00):
-   - Memperketat syarat mundur (lookback) pra-Set Piece agar tidak memakan fase umpan aktif
-     sebelum bola keluar lapangan (menurunkan FP_D dan menaikkan precision_D, recall_H, recall_A).
-   - Menyesuaikan ambang filter blip terjepit (sandwiched < 52 frame) dan blip tepi dead ball
-     (boundary < 45 frame) agar defleksi 1.8 detik tetap hilang namun penguasaan bola asli
-     berdurasi >= 2.0 detik tidak ikut terhapus.
-
-Cara menjalankan dari root folder repositori more-than-a-hack-2027:
-    python predict_possession_v7.py --team "Alamak Menang Wak v7"
+Usage, from the repository root:
+    python predict_possession.py --team "Alamak Menang Wak"
 """
 
 import argparse
