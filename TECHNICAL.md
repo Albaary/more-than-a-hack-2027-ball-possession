@@ -1,7 +1,7 @@
 # Technical document — Team "Alamak Menang Wak"
 
 More Than A Hack 2027, Phase 1: Ball Possession.
-Code: `predict_possession.py` (final version, "v7"). Run instructions are in `README.md`.
+Code: `predict_possession.py`. Run instructions are in `README.md`.
 
 ## 1. Approach
 
@@ -55,7 +55,7 @@ Tried and dropped during development (all on the public window, see section 6):
 - `--min-spell 60`: it removed correctly detected possessions and lowered spellF1.
 - Looser dead-ball speed thresholds (2.6 m/s ball, 2.35 m/s players): scores were
   identical to the defaults, so they have no effect on this data and were not adopted.
-- A fragmented variant ("v8") with weaker team smoothing: 23 possessions instead of 17 and
+- A fragmented variant with weaker team smoothing: 23 possessions instead of 17 and
   clearly lower scores; discarded.
 
 ## 3. Training data
@@ -156,8 +156,8 @@ spellF1 or 0.01 macro-F1 are within the noise band stated in `EVALUATION.md`):
 | Version | macro_f1 | spellF1 | possessions (GT 17) |
 |---|---|---|---|
 | baseline_smooth50 (organisers) | 0.621 | 0.326 | 26 |
-| earliest version (v3) | 0.765 | 0.452 | 14 |
-| final (v7) | 0.770 | 0.537 | 18 |
+| this pipeline, window 60, no latency correction | 0.765 | 0.452 | 14 |
+| final submission (window 50, with latency correction) | 0.770 | 0.537 | 18 |
 
 ## 7. Reproduction
 

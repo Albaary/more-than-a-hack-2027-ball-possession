@@ -43,8 +43,7 @@ possession), `D` (dead ball), or `X` (abstain / not graded).
 - The match data in `data/` (**do not commit it** — the data may not be redistributed).
 
 ```bash
-pip install numpy
-pip freeze | grep -i numpy      # record the version in requirements.txt
+pip install -r requirements.txt
 ```
 
 ### Generate the submission file
@@ -74,15 +73,7 @@ Always validate the exact file you are about to upload, not one built earlier.
 | `--dead-player-speed` | 2.20 | Mean player speed threshold (m/s) for staying in D |
 | `--data-dir` | (empty) | Optional data folder |
 
-Earlier iterations can be reproduced with these arguments:
-
-| Version | Arguments |
-|---|---|
-| v3 | `--window-team 60 --transition-delay 0 --restart-delay 0` |
-| v4 | `--window-team 60 --restart-delay 0` |
-| v5 | `--window-team 60 --restart-delay 8` |
-| v6 | `--window-team 60 --restart-delay 12` |
-| **v7 (final, default)** | *(no arguments)* |
+The submission uses the defaults above.
 
 ---
 
@@ -91,49 +82,43 @@ Earlier iterations can be reproduced with these arguments:
 All numbers below come from `evaluation/run_evaluation.py` against the **public** ground
 truth (7,500 frames). They are **not** full-match scores.
 
-| Version | macro_f1 | spellF1 (mean) | f1_D | recall_D | median latency (frames) | possessions (GT 17) |
+| System | macro_f1 | spellF1 (mean) | f1_D | recall_D | median latency (frames) | possessions (GT 17) |
 |---|---|---|---|---|---|---|
 | baseline_smooth50 (organisers) | 0.6207 | 0.3256 | 0.323 | 0.214 | +4 | 26 |
 | baseline_smooth125 (organisers) | 0.5812 | 0.4242 | 0.146 | 0.079 | -3 | 16 |
-| v3 | 0.7647 | 0.4516 | 0.635 | 0.546 | -11 | 14 |
-| v4 | 0.7661 | 0.4645 | 0.635 | 0.546 | -11 | 14 |
-| v5 | 0.7728 | 0.4774 | 0.650 | 0.568 | -4 | 14 |
-| v6 | **0.7755** | 0.4774 | 0.656 | 0.577 | -2 | 14 |
-| **v7 (final, window 50)** | 0.7702 | **0.5371** | 0.656 | 0.577 | -2 | 18 |
-| v8 (discarded) | 0.7185 | 0.3700 | 0.635 | 0.546 | -11 | 23 |
+| This pipeline, window 60, no delays | 0.7647 | 0.4516 | 0.635 | 0.546 | -11 | 14 |
+| This pipeline, window 60, with delays | **0.7755** | 0.4774 | 0.656 | 0.577 | -2 | 14 |
+| **Submission (defaults: window 50, with delays)** | 0.7702 | **0.5371** | 0.656 | 0.577 | -2 | 18 |
 
 Further details:
-- v7 has a higher headline spellF1 than v6 (0.571 vs 0.516) but lower accuracy (0.802 vs
-  0.808) and more spurious possessions (15 vs 11).
-- v8 is clearly worse: over-fragmented (23 possessions, 11.2 s on average), team accuracy
-  fell to 0.79, and its dead-ball track is identical to v3 (no `restart-delay`
-  correction). Its code is not part of this repository.
-- v6 sweep: `--dead-ball-speed 2.6 --dead-player-speed 2.35` produced scores
-  **identical** to v6, so those thresholds are effectively inactive on this data.
-- v7 sweep: `--min-spell 60` (with window 50) lowered spellF1 from 0.537 to 0.488.
+- Window 50 has a higher headline spellF1 than window 60 (0.571 vs 0.516) but slightly lower
+  accuracy (0.802 vs 0.808) and more spurious possessions (15 vs 11).
+- Loosening the dead-ball thresholds (`--dead-ball-speed 2.6 --dead-player-speed 2.35`)
+  produced scores identical to the defaults, so those thresholds are effectively inactive on
+  this data.
+- `--min-spell 60` (with window 50) lowered spellF1 from 0.537 to 0.488.
 
 ---
 
 ## 4. Honest notes (read before interpreting the numbers)
 
-1. **Differences between v3 and v7 are within the noise band.** `EVALUATION.md` states that
+1. **The differences in the table are within the noise band.** `EVALUATION.md` states that
    differences below 0.04 in spellF1 and below 0.01 in macro_f1 are noise, and on the public
-   window a single possession moves spellF1 by about 0.06. The v6 -> v7 gain is two extra
-   matched possessions. Do not read the table above as a definitive ranking.
+   window a single possession moves spellF1 by about 0.06. Do not read the table above as a
+   definitive ranking.
 2. **The public window is not a tuning set.** `RULES.md` forbids using it to choose between
-   versions. The values `--restart-delay 12` and `--transition-delay 8` were derived from
-   transition latencies measured on the public window (only 6-7 matched transitions), and
-   `--window-team 50` was chosen after seeing public scores. The only independent support for
-   window 50 is that the organisers' full-match baseline scores rank window 50 above 25 and
-   125. The delay parameters have no independent basis; both can be set to 0.
+   configurations. The values `--restart-delay 12` and `--transition-delay 8` were derived
+   from transition latencies measured on the public window (only 6-7 matched transitions),
+   and `--window-team 50` was chosen after seeing public scores. The only independent support
+   for window 50 is that the organisers' full-match baseline scores rank window 50 above 25
+   and 125. The delay parameters have no independent basis; both can be set to 0.
 3. **Frame constants.** The code uses `110808..113741` (the pre-kick-off range of the second
-   half, which the organisers' FAQ requires to be `D`) and `11185` (first-half kick-off) to
-   exclude kick-offs from dead-ball marking. The source of `11185` should be confirmed and
-   explained in the technical document.
+   half, which the organisers' FAQ requires to be `D`) and `11185` (first-half kick-off, taken
+   from the organisers' `games.py`) to exclude kick-offs from dead-ball marking.
 4. **Full-match scores are likely lower.** The organisers' baselines drop 0.08-0.20 in
    spellF1 when moving from the public window to the full match.
 5. **Biggest weaknesses:** `recall_D` is only 0.577 and the possession count is still
-   unstable (14-18 vs 17 in the ground truth). Neither has been addressed yet.
+   unstable (14-18 vs 17 in the ground truth, depending on the smoothing window).
 6. No hand labels, no private ground truth, and no human-produced data about this match
    were used. All labels come from an algorithm.
 
@@ -143,7 +128,7 @@ Further details:
 
 ```
 more-than-a-hack-2027/
-├── predict_possession.py    # final pipeline (v7)
+├── predict_possession.py    # the pipeline
 ├── requirements.txt         # numpy (pinned)
 ├── README.md
 ├── TECHNICAL.md             # technical document for the submission form
